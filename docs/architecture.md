@@ -3,8 +3,8 @@
 ## Scope
 
 This document describes the intended architecture while clearly marking what
-exists today. Phase 2 adds bounded, opt-in Perplexity Search API discovery;
-later phases remain intentionally inactive.
+exists today. Phase 3 adds local profile parsing and deterministic query
+generation on top of bounded, opt-in Perplexity discovery.
 
 ## Planned pipeline
 
@@ -29,6 +29,8 @@ and deliver up to 20 results.
   separately later.
 - `src/nextrole/discovery.py`: the Perplexity adapter, request budgeting,
   result normalization, URL deduplication, and deterministic fixture mode.
+- `src/nextrole/profile.py`: private Markdown parsing and deterministic query
+  generation from `CandidateProfile` preferences.
 - `src/nextrole/cli.py`: the offline `--help`, `check`, and `discover` commands.
 
 LangChain Core remains a dependency for future model, embedding, and retrieval

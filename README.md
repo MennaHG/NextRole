@@ -4,7 +4,7 @@ An open-source Python project for discovering and evaluating recent job
 postings against a candidate's preferences and career history. It is also a
 small learning project for LangChain, embeddings, vector databases, and RAG.
 
-## Current status: Phase 2 — job discovery
+## Current status: Phase 3 — profile-based job discovery
 
 Implemented:
 
@@ -14,6 +14,8 @@ Implemented:
 - An offline CLI with `--help`, `check`, and fixture-backed `discover`.
 - An opt-in Perplexity Search API adapter with query batching, URL
   deduplication, conservative normalization, and request budgets.
+- A local Markdown candidate-profile parser and deterministic profile-based
+  query generator.
 - Unit tests, Ruff configuration, and GitHub Actions CI.
 - A fictional example profile and repository hygiene rules.
 
@@ -42,7 +44,10 @@ and set `PERPLEXITY_API_KEY` only when you intend to use live discovery.
 ```bash
 nextrole --help
 nextrole check
+nextrole profile validate --file ./private/profile.md
 nextrole discover --query "backend engineer Egypt"
+nextrole discover --profile ./private/profile.md --dry-run
+nextrole discover --profile ./private/profile.md --live
 nextrole discover --query "backend engineer Egypt" --dry-run
 nextrole discover --query "backend engineer Egypt" --hours 24 --limit 20 --live
 ```
@@ -59,6 +64,44 @@ python3 -m nextrole check
 and the request budget without making a call. Multiple `--query` values are
 batched in groups of five. Queries can also be configured as a JSON list in
 `SEARCH_QUERIES`.
+
+### Candidate profiles
+
+Create a private Markdown file such as `private/profile.md` using the format
+shown in [`examples/profile.example.md`](examples/profile.example.md). It must
+contain these sections:
+
+```markdown
+## Preferences
+- Roles: Backend Engineer, Full Stack Engineer
+- Locations: Cairo, Egypt
+- Seniority: Mid-level, Senior
+- Remote: Yes
+- Keywords: Python, React, Node.js
+- Maximum job age: 24 hours
+
+## Career history
+Describe professional experience here.
+
+## Technical skills
+Python, SQL, Docker
+
+## Education
+BSc in Computer Science.
+```
+
+Validate it offline with `nextrole profile validate --file
+./private/profile.md`. Supplying `--profile` to `discover` generates up to
+three stable queries from roles, technologies, and the first non-remote
+location. The first query is intentionally broader for coverage. Explicit
+`--query` values override generated queries. Profile validation and query
+generation never call Perplexity and do not print career history.
+
+Keep private profiles under `private/` or `profiles/`; both are ignored by Git.
+The public example contains fictional data only. Phase 3 preserves ambiguous
+results for future semantic evaluation rather than applying rigid candidate
+or technology filtering. Career history is retained as text for Phase 4
+indexing, which is not implemented yet.
 
 The default budget is one attempted request per run and retries are disabled.
 Retries can be set to at most one, and every retry counts against the budget.

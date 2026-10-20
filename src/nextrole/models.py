@@ -38,6 +38,8 @@ class CandidateProfile(BaseModel):
     name: str | None = None
     preferences: JobPreferences
     career_history: str
+    technical_skills: list[str] = Field(default_factory=list)
+    education: str | None = None
 
 
 class JobMatch(BaseModel):

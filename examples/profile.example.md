@@ -20,6 +20,10 @@ Built Python services and internal APIs for a fictional logistics platform.
 Improved test coverage, introduced typed interfaces, and partnered with
 product teams to ship reliable data workflows.
 
-### Selected skills
+## Technical skills
 
 Python, SQL, REST APIs, Docker, pytest, data pipelines, technical writing.
+
+## Education
+
+BSc in Computer Science — Fictional University, 2018.

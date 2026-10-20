@@ -2,9 +2,11 @@
 
 import argparse
 from collections.abc import Sequence
+from pathlib import Path
 
 from .config import get_settings
 from .discovery import DiscoveryRequest, SearchError, discover, planned_attempts
+from .profile import ProfileError, generate_queries, load_profile
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -14,6 +16,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("check", help="Validate basic local configuration.")
+    profile_parser = subparsers.add_parser(
+        "profile", help="Manage a local candidate profile."
+    )
+    profile_commands = profile_parser.add_subparsers(dest="profile_command")
+    validate_parser = profile_commands.add_parser(
+        "validate", help="Validate a Markdown candidate profile offline."
+    )
+    validate_parser.add_argument(
+        "--file", required=True, help="Path to profile Markdown."
+    )
     discover_parser = subparsers.add_parser(
         "discover", help="Discover recent job postings (offline by default)."
     )
@@ -30,6 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discover_parser.add_argument(
         "--country", help="ISO country code used by Search API."
+    )
+    discover_parser.add_argument(
+        "--profile", help="Use this Markdown profile to generate search queries."
     )
     mode = discover_parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -63,23 +78,39 @@ def _run_check() -> int:
 
 def _run_discover(args: argparse.Namespace) -> int:
     settings = get_settings()
-    queries = tuple(args.query or settings.search_queries)
-    if not queries:
-        queries = ("recent job openings",)
     try:
+        profile = load_profile(Path(args.profile)) if args.profile else None
+        if args.query:
+            queries = tuple(args.query)
+            query_source = "manual"
+        elif profile:
+            queries = tuple(generate_queries(profile))
+            query_source = "profile"
+        else:
+            queries = tuple(settings.search_queries) or ("recent job openings",)
+            query_source = "configuration" if settings.search_queries else "default"
+        if not queries:
+            raise ProfileError("no search queries were generated")
         request = DiscoveryRequest(
             queries=queries,
             max_results=(
                 args.limit if args.limit is not None else settings.search_max_results
             ),
             max_age_hours=(
-                args.hours if args.hours is not None else settings.search_max_age_hours
+                args.hours
+                if args.hours is not None
+                else (
+                    profile.preferences.max_age_hours
+                    if profile and profile.preferences.max_age_hours is not None
+                    else settings.search_max_age_hours
+                )
             ),
             country=args.country or settings.search_country,
         )
         attempts = planned_attempts(request, settings)
         if args.dry_run:
             print("Mode: dry-run (no API call)")
+            print(f"Query source: {query_source}")
             print(f"Queries: {list(request.queries)}")
             print(f"API parameters: {request.api_parameters()}")
             print(f"Planned request attempts: {attempts}")
@@ -91,7 +122,7 @@ def _run_discover(args: argparse.Namespace) -> int:
             settings,
             mode="live" if args.live else "fixture",
         )
-    except (SearchError, ValueError) as error:
+    except (ProfileError, SearchError, ValueError) as error:
         print(f"Error: {error}")
         return 2
 
@@ -112,12 +143,27 @@ def _run_discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_profile_validate(args: argparse.Namespace) -> int:
+    try:
+        profile = load_profile(Path(args.file))
+    except ProfileError as error:
+        print(f"Error: {error}")
+        return 2
+    print("Profile is valid.")
+    print(f"Roles: {len(profile.preferences.roles)}")
+    print(f"Locations: {len(profile.preferences.locations)}")
+    print(f"Generated queries: {len(generate_queries(profile))}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "check":
         return _run_check()
     if args.command == "discover":
         return _run_discover(args)
+    if args.command == "profile" and args.profile_command == "validate":
+        return _run_profile_validate(args)
     build_parser().print_help()
     return 0
 
