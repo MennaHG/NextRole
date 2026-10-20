@@ -1,0 +1,25 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.DS_Store
+
+# Private candidate data and local generated state
+profiles/
+private-profile*.md
+chroma_db/
+chroma_data/
+data/generated/
+outputs/generated/
