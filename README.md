@@ -25,9 +25,9 @@ integrations are intentionally not implemented yet.
 Python 3.11 or newer is required.
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python3 -m pip install -e ".[dev]"
 ```
 
 Copy `.env.example` to `.env` if you want to experiment with local settings.
@@ -43,8 +43,8 @@ nextrole check
 The same commands work without installation through the module entry point:
 
 ```bash
-python -m nextrole --help
-python -m nextrole check
+python3 -m nextrole --help
+python3 -m nextrole check
 ```
 
 Configuration variables use the `NEXTROLE_` prefix. Provider names and model
