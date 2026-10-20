@@ -18,6 +18,7 @@ build/
 
 # Private candidate data and local generated state
 profiles/
+private/
 private-profile*.md
 chroma_db/
 chroma_data/

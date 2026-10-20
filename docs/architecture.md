@@ -3,8 +3,8 @@
 ## Scope
 
 This document describes the intended architecture while clearly marking what
-exists today. Phase 1 is the repository foundation only; no external provider
-or persistence integration is active.
+exists today. Phase 2 adds bounded, opt-in Perplexity Search API discovery;
+later phases remain intentionally inactive.
 
 ## Planned pipeline
 
@@ -27,15 +27,18 @@ and deliver up to 20 results.
 - `src/nextrole/config.py`: environment-backed settings. LLM and
   embedding provider/model names are independent so they can be configured
   separately later.
-- `src/nextrole/cli.py`: the offline `--help` and `check` commands.
+- `src/nextrole/discovery.py`: the Perplexity adapter, request budgeting,
+  result normalization, URL deduplication, and deterministic fixture mode.
+- `src/nextrole/cli.py`: the offline `--help`, `check`, and `discover` commands.
 
-LangChain Core is a dependency for future model, embedding, and retrieval
-abstractions. Phase 1 deliberately does not add provider packages or call an
-LLM.
+LangChain Core remains a dependency for future model, embedding, and retrieval
+abstractions. Discovery does not filter candidates, call an LLM, scrape pages,
+or enrich results with another service.
 
 ## Future boundaries
 
-- A discovery adapter will isolate the Perplexity Search API.
+- The discovery adapter isolates the Perplexity Search API and is bounded to a
+  configured request budget; live calls require explicit CLI opt-in.
 - A profile adapter will support local Markdown first and private Google Drive
   later; profile parsing should produce `CandidateProfile` without mixing
   preferences into career-history text.

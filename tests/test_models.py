@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -32,7 +32,7 @@ def test_candidate_profile_separates_preferences_from_history() -> None:
 def test_job_match_validates_score_range() -> None:
     job = JobPosting(
         title="Engineer",
-        published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        published_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
     match = JobMatch(job=job, score=0.8)
