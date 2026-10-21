@@ -62,7 +62,9 @@ class FakeChat:
                     "job_title": "Invented Title",
                     "bullets": [
                         {
-                            "text": "Built Python APIs that processed 10,000 events daily.",
+                            "text": (
+                                "Built Python APIs that processed 10,000 events daily."
+                            ),
                             "evidence_references": [
                                 "Built Python APIs that processed 10,000 events daily."
                             ],
