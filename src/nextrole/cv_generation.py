@@ -195,9 +195,7 @@ def _preserve_experience_metadata(
         match = re.match(r"^\s*#{3,}\s+(.+?)\s+[—–-]\s+(.+?)\s*$", line)
         if match:
             heading_text = match.group(0).split(None, 1)[1]
-            parts = [
-                part.strip() for part in re.split(r"\s+[—–-]\s+", heading_text)
-            ]
+            parts = [part.strip() for part in re.split(r"\s+[—–-]\s+", heading_text)]
             title = parts[0]
             company = parts[1]
             location = parts[2] if len(parts) > 2 else None
@@ -345,8 +343,7 @@ def _slug(value: str) -> str:
 
 def _numbers(value: str) -> set[str]:
     return {
-        item.replace(",", "")
-        for item in re.findall(r"\b\d[\d,.]*%?", value.casefold())
+        item.replace(",", "") for item in re.findall(r"\b\d[\d,.]*%?", value.casefold())
     }
 
 

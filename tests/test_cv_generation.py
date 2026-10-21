@@ -56,16 +56,20 @@ class FakeChat:
             "headline": "Backend Engineer",
             "summary": "Backend engineer focused on Python APIs.",
             "contact": {"name": "Invented Name", "email": "bad@example.test"},
-            "experience": [{
-                "company": "Invented Company",
-                "job_title": "Invented Title",
-                "bullets": [{
-                    "text": "Built Python APIs that processed 10,000 events daily.",
-                    "evidence_references": [
-                        "Built Python APIs that processed 10,000 events daily."
+            "experience": [
+                {
+                    "company": "Invented Company",
+                    "job_title": "Invented Title",
+                    "bullets": [
+                        {
+                            "text": "Built Python APIs that processed 10,000 events daily.",
+                            "evidence_references": [
+                                "Built Python APIs that processed 10,000 events daily."
+                            ],
+                        }
                     ],
-                }],
-            }],
+                }
+            ],
             "technical_skills": {"Languages": ["Python", "SQL"]},
             "projects": [],
             "education": "Invented education",
@@ -89,8 +93,7 @@ def test_generation_uses_one_mocked_model_call_and_profile_facts() -> None:
     assert len(cv.experience[0].bullets) == 1
     assert cv.experience[0].bullets[0].evidence_references
     assert any(
-        "Missing contact field: phone" in warning
-        for warning in cv.validation_warnings
+        "Missing contact field: phone" in warning for warning in cv.validation_warnings
     )
 
 
@@ -167,13 +170,16 @@ def test_cli_generate_cv_execution_is_mockable(tmp_path, monkeypatch, capsys) ->
 
     monkeypatch.setattr("nextrole.cli.generate_cv_from_profile", fake_generate)
     monkeypatch.setattr("nextrole.cli.save_cv", lambda cv, job, root: output)
-    assert main(
-        [
-            "generate-cv",
-            "--url",
-            "https://jobs.test/backend",
-            "--profile",
-            str(tmp_path / "profile.md"),
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "generate-cv",
+                "--url",
+                "https://jobs.test/backend",
+                "--profile",
+                str(tmp_path / "profile.md"),
+            ]
+        )
+        == 0
+    )
     assert "Output file:" in capsys.readouterr().out
