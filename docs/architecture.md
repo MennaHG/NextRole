@@ -2,21 +2,23 @@
 
 ## Scope
 
-This document describes the intended architecture while clearly marking what
-exists today. Phase 4.1 adds bounded, local job-page enrichment before the
-offline-first RAG matching stage.
+This document describes the current architecture and identifies future
+boundaries. Phase 4.1 adds bounded, local job-page enrichment before the
+offline-first RAG matching stage; Phase 5 adds separate digest generation and
+Gmail delivery.
 
-## Planned pipeline
+## Current pipeline
 
 ```text
 job discovery -> normalization -> page enrichment -> profile retrieval -> job-fit evaluation
     -> ranking -> structured report -> daily digest delivery
 ```
 
-The eventual workflow will discover postings from the last 24 hours, normalize
-them into `JobPosting`, filter them using `JobPreferences`, retrieve relevant
-career-history passages with embeddings and a vector store, evaluate matches,
-and deliver up to 20 results.
+The workflow discovers postings, normalizes them into `JobPosting`, enriches
+their pages, retrieves relevant career-history passages with embeddings and a
+vector store, evaluates matches, and delivers a configured digest of new
+qualifying results. Matching defaults to 20 evaluated jobs; digest delivery
+defaults to 10 emailed jobs.
 
 ## Current modules
 
@@ -74,8 +76,8 @@ that file for scheduled GitHub Actions runs. Preview mode never opens SMTP.
 - A profile adapter will support local Markdown first and private Google Drive
   later; profile parsing should produce `CandidateProfile` without mixing
   preferences into career-history text.
-- Delivery and scheduling will be separate from matching so they can be tested
-  without network access.
+- Scheduling and durable external delivery state remain future concerns; the
+  current digest delivery is separately testable and uses a local state file.
 
 Each integration should be introduced behind a small interface with offline
 unit tests and credentials supplied only through environment configuration.

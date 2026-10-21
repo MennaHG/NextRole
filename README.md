@@ -43,6 +43,95 @@ Offline fixture and dry-run discovery do not require credentials or a network
 connection. Obtain a key from [Perplexity API Console](https://console.perplexity.ai)
 and set `PERPLEXITY_API_KEY` only when you intend to use live discovery.
 
+## Getting started
+
+The quickest way to try NextRole is to run the pipeline offline first. These
+commands do not call an LLM, send email, or require paid credentials.
+
+1. Create and activate the virtual environment:
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   python3 -m pip install -e ".[dev]"
+   ```
+
+2. Create a private candidate profile:
+
+   ```bash
+   mkdir -p private
+   cp examples/profile.example.md private/profile.md
+   nextrole profile validate --file private/profile.md
+   ```
+
+   Replace the example career history and preferences with your own information.
+   Keep the file under `private/`; that directory is ignored by Git.
+
+3. Discover jobs. Start with a dry run to inspect the search plan:
+
+   ```bash
+   nextrole discover --profile private/profile.md --dry-run
+   ```
+
+   To use live discovery later, configure `PERPLEXITY_API_KEY` and explicitly
+   add `--live`.
+
+4. Enrich the discovered jobs. This fetches job pages and extracts descriptions
+   locally; it does not use an LLM:
+
+   ```bash
+   nextrole enrich --input jobs.json --output enriched_jobs.json
+   ```
+
+5. Run an offline matching check:
+
+   ```bash
+   nextrole match \
+     --profile private/profile.md \
+     --input enriched_jobs.json \
+     --dry-run
+   ```
+
+   For a saved, inspectable matching report without paid provider calls, omit
+   `--dry-run` and add `--json --output outputs/matching-report.json`. Fixture
+   mode is intentionally conservative and returns uncertain evaluations. A
+   live semantic evaluation requires the explicit `--live` flag and configured
+   providers.
+
+6. Preview the email digest without connecting to Gmail:
+
+   ```bash
+   nextrole digest \
+     --input outputs/matching-report.json \
+     --preview \
+     --output outputs/job-digest.html
+   ```
+
+   The preview includes only validated jobs with usable application links,
+   excludes explicitly ineligible jobs, and distinguishes requirements that are
+   not met from requirements that remain unverified.
+
+7. Send the digest only after configuring a Gmail App Password. The message is
+   sent to the same address used as the sender:
+
+   ```ini
+   GMAIL_ADDRESS=yourname@gmail.com
+   GMAIL_APP_PASSWORD=your_google_app_password
+   ```
+
+   Then run:
+
+   ```bash
+   nextrole digest \
+     --input outputs/matching-report.json \
+     --send
+   ```
+
+   Use `--max-jobs` and `--min-score` to limit a test send. Delivery state is
+   stored in `data/digest_state.json`, so successfully submitted jobs are not
+   intentionally sent again on later runs. See [Email job digest](#email-job-digest)
+   for Gmail setup details and delivery limitations.
+
 ## CLI
 
 ```bash
@@ -115,8 +204,7 @@ generation never call Perplexity and do not print career history.
 Keep private profiles under `private/` or `profiles/`; both are ignored by Git.
 The public example contains fictional data only. Phase 3 preserves ambiguous
 results for future semantic evaluation rather than applying rigid candidate
-or technology filtering. Career history is retained as text for Phase 4
-indexing, which is not implemented yet.
+or technology filtering. Career history is retained as text for RAG indexing.
 
 The default budget is one attempted request per run and retries are disabled.
 Retries can be set to at most one, and every retry counts against the budget.
@@ -136,7 +224,7 @@ The `PERPLEXITY_API_KEY` and discovery variables in `.env.example` are
 accepted alongside the existing `NEXTROLE_`-prefixed settings. Credentials
 are never printed, logged, or needed by tests.
 
-### Phase 4 matching
+### Phase 4.2 matching
 
 The evaluator returns semantic requirement assessments, including an evidence
 relationship (`direct`, `equivalent`, `transferable`, `absent`, or
@@ -231,10 +319,11 @@ technologies or on-site roles before semantic evaluation.
 
 Fixture output is deliberately `uncertain`: it exercises the pipeline without
 pretending to perform semantic matching. No LLM or embedding calls occur in
-tests, profile validation, or dry-run mode. Phase 4 produces structured JSON
-reports for the future delivery layer; it does not send email or apply to jobs.
+tests, profile validation, or dry-run mode. Matching produces structured JSON
+reports for the separate digest delivery layer; NextRole does not apply to jobs
+or contact recruiters.
 
-### Email job digest
+### Phase 5: Email job digest
 
 The digest command consumes a saved matching report and does not run matching or
 make additional LLM calls. It includes only jobs with `valid` enrichment status,
