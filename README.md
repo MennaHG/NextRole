@@ -4,7 +4,7 @@ An open-source Python project for discovering and evaluating recent job
 postings against a candidate's preferences and career history. It is also a
 small learning project for LangChain, embeddings, vector databases, and RAG.
 
-## Current status: Phase 3 — profile-based job discovery
+## Current status: Phase 4.1 — job-description enrichment and profile-based RAG matching
 
 Implemented:
 
@@ -16,13 +16,17 @@ Implemented:
   deduplication, conservative normalization, and request budgets.
 - A local Markdown candidate-profile parser and deterministic profile-based
   query generator.
+- A RAG matching pipeline that chunks career history, builds one ephemeral
+  vector index per run, and evaluates each job with one structured LangChain
+  chat-model call.
+- A bounded, robots-aware job-page enrichment command using `httpx`,
+  Schema.org `JobPosting` JSON-LD first, and BeautifulSoup HTML fallback.
 - Unit tests, Ruff configuration, and GitHub Actions CI.
 - A fictional example profile and repository hygiene rules.
 
-Planned for later phases: private Google Drive profiles, preference filtering,
-ChromaDB indexing, LangChain-based retrieval and scoring, email digests, and
-scheduled GitHub Actions runs. Those integrations are intentionally not
-implemented yet.
+Planned for later phases: private Google Drive profiles, email digests, and
+scheduled GitHub Actions runs. Google Drive, delivery, scheduling, automatic
+applications, and the Perplexity Agent API are intentionally out of scope.
 
 ## Installation
 
@@ -50,6 +54,15 @@ nextrole discover --profile ./private/profile.md --dry-run
 nextrole discover --profile ./private/profile.md --live
 nextrole discover --query "backend engineer Egypt" --dry-run
 nextrole discover --query "backend engineer Egypt" --hours 24 --limit 20 --live
+nextrole enrich --input ./jobs.json --output ./enriched_jobs.json
+nextrole enrich --input ./jobs.json --output ./enriched_jobs.json --dry-run
+nextrole match --profile ./private/profile.md --input ./jobs.json
+nextrole match --profile ./private/profile.md --input ./jobs.json --dry-run
+nextrole match --profile ./private/profile.md --input ./jobs.json --live
+nextrole match --profile ./private/profile.md --input ./enriched_jobs.json \
+  --json --debug-evidence
+nextrole match --profile ./private/profile.md --input ./enriched_jobs.json \
+  --json --debug-evidence --output ./outputs/debug-evidence.json
 ```
 
 The same commands work without installation through the module entry point:
@@ -120,6 +133,120 @@ results before using them downstream.
 The `PERPLEXITY_API_KEY` and discovery variables in `.env.example` are
 accepted alongside the existing `NEXTROLE_`-prefixed settings. Credentials
 are never printed, logged, or needed by tests.
+
+### Phase 4 matching
+
+The evaluator returns semantic requirement assessments, including an evidence
+relationship (`direct`, `equivalent`, `transferable`, `absent`, or
+`contradictory`). Python calculates the reported metrics after validating those
+assessments; the LLM does not generate a score. `demonstrated_fit` weights
+required requirements by 3 and preferred or unspecified requirements by 1,
+using values of 1.0, 0.5, and 0 for `met`, `partially_met`, and `not_met`.
+`unknown` requirements are excluded from demonstrated fit. `evidence_coverage`
+is the weighted proportion of requirements that are assessable. The legacy
+`match_score` field remains as an alias for `demonstrated_fit`.
+
+Eligibility remains independent from both metrics: a high demonstrated fit
+does not turn uncertain location, authorization, certification, or other
+mandatory constraints into an eligible decision.
+
+### Phase 4.1 enrichment
+
+Enrichment is a local extraction step; it does not call Perplexity, an LLM,
+or an embedding provider. It follows redirects, checks `robots.txt`, accepts
+HTML only, enforces a response-size limit, and uses bounded concurrency. The
+limits can be set with `ENRICHMENT_TIMEOUT_SECONDS`, `ENRICHMENT_MAX_PAGES`,
+`ENRICHMENT_CONCURRENCY`, and `ENRICHMENT_MAX_BYTES`. `--dry-run` writes an
+inspectable file without network access.
+
+Each output job keeps discovery metadata and may add `resolved_url`,
+`description`, `requirements`, `company`, `location`, `work_arrangement`,
+`employment_type`, `date_posted`, `validity_status`, `extraction_status`,
+`extraction_source`, and `extraction_error`. Invalid pages stay in the JSON
+for debugging but are excluded from matching. Uncertain and failed records
+remain visible and are not safe to score from their title alone.
+
+The generated `enriched_jobs.json` is ignored by Git by default. Reuse it for
+repeatable offline matching. Extraction cannot execute JavaScript, bypass
+authentication, solve CAPTCHAs, or recover content blocked by a site, so some
+pages remain uncertain or unavailable.
+
+Matching applies three pre-LLM gates: confirmed invalid postings are skipped,
+postings without both a description and requirements are skipped, and no
+matching/index work runs when candidate career evidence is unavailable.
+Skipped records and reasons are reported in the matching JSON output.
+
+```bash
+nextrole match --profile ./private/profile.md \
+  --input ./enriched_jobs.json --dry-run
+nextrole match --profile ./private/profile.md \
+  --input ./enriched_jobs.json
+```
+
+Matching accepts a JSON list of normalized jobs, or the JSON output from a
+discovery report. A public fictional input is available at
+[`examples/jobs.example.json`](examples/jobs.example.json):
+
+```bash
+nextrole match --profile ./private/profile.md \
+  --input ./examples/jobs.example.json
+nextrole match --profile ./private/profile.md \
+  --input ./examples/jobs.example.json --dry-run
+```
+
+Without `--live`, matching uses deterministic fixture embeddings and a fixture
+model, so it is offline and makes no provider calls. `--dry-run` only displays
+the planned job count, providers, and call count. `--live` is required before
+the configured LLM and embedding providers are initialized. Configure them
+independently with `NEXTROLE_LLM_PROVIDER`, `NEXTROLE_LLM_MODEL`,
+`NEXTROLE_EMBEDDING_PROVIDER`, and `NEXTROLE_EMBEDDING_MODEL`, plus the
+generic `LLM_API_KEY`. Embeddings reuse `LLM_API_KEY` by default; set the
+optional `EMBEDDING_API_KEY` only when they need a separate credential.
+For local development, use Ollama for both providers; Ollama requires no API
+key. The example configuration uses a small local chat model and
+`nomic-embed-text` for embeddings. Install Ollama separately, pull the models,
+and keep the Ollama service running. OpenAI, Anthropic (chat), and Google/Gemini
+(chat and embeddings) remain available for deployment, subject to the
+corresponding LangChain package being installed.
+
+Example local setup:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull nomic-embed-text
+python3 -m pip install langchain-ollama
+nextrole match --profile ./private/profile.md --input ./jobs.json --live
+```
+
+The career-history section is split into chunks and indexed once in an
+ephemeral Chroma collection, with an in-memory fallback for dependency-limited
+offline development. Preferences are supplied directly to the evaluator; they
+are not embedded as career history. Each selected job gets at most one LLM
+call. The default limit is 20 jobs, and `MATCH_MAX_JOBS`, `RAG_CHUNK_SIZE`,
+`RAG_CHUNK_OVERLAP`, and `RAG_TOP_K` configure the run. Unknown job fields are
+retained and reported as uncertainties; matching does not reject unfamiliar
+technologies or on-site roles before semantic evaluation.
+
+Fixture output is deliberately `uncertain`: it exercises the pipeline without
+pretending to perform semantic matching. No LLM or embedding calls occur in
+tests, profile validation, or dry-run mode. Phase 4 produces structured JSON
+reports for the future delivery layer; it does not send email or apply to jobs.
+
+### Evidence-grounded evaluation
+
+Each evaluation now includes optional structured `requirement_assessments`.
+Every assessment records the job requirement, whether it is required or
+preferred, its evidence status (`met`, `partially_met`, `not_met`, or
+`unknown`), candidate evidence, and an explanation. The evaluator prompt keeps
+candidate preferences, retrieved career history, and enriched job data in
+separate tagged sections and requires these assessments before the final score.
+Job-page content, including third-party profiles, is never candidate evidence.
+
+Use `--debug-evidence` only when inspecting a run. It adds retrieved career
+chunks, extracted job requirements, assessments, eligibility, and score to the
+output; it is intentionally opt-in because retrieved chunks may contain
+private profile information. Add `--output path.json` to save the formatted
+report directly to a file.
 
 ## Development
 

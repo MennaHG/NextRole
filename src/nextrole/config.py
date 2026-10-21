@@ -19,8 +19,18 @@ class Settings(BaseSettings):
     profile_path: Path | None = None
     llm_provider: str | None = None
     llm_model: str | None = None
+    llm_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_API_KEY", "NEXTROLE_LLM_API_KEY"),
+    )
     embedding_provider: str | None = None
     embedding_model: str | None = None
+    embedding_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "EMBEDDING_API_KEY", "NEXTROLE_EMBEDDING_API_KEY"
+        ),
+    )
     log_level: str = Field(
         default="INFO", pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$"
     )
@@ -67,6 +77,56 @@ class Settings(BaseSettings):
     search_queries: list[str] = Field(
         default_factory=list,
         validation_alias=AliasChoices("SEARCH_QUERIES", "NEXTROLE_SEARCH_QUERIES"),
+    )
+    match_max_jobs: int = Field(
+        default=20,
+        ge=1,
+        validation_alias=AliasChoices("MATCH_MAX_JOBS", "NEXTROLE_MATCH_MAX_JOBS"),
+    )
+    rag_chunk_size: int = Field(
+        default=1200,
+        ge=200,
+        validation_alias=AliasChoices("RAG_CHUNK_SIZE", "NEXTROLE_RAG_CHUNK_SIZE"),
+    )
+    rag_chunk_overlap: int = Field(
+        default=120,
+        ge=0,
+        validation_alias=AliasChoices(
+            "RAG_CHUNK_OVERLAP", "NEXTROLE_RAG_CHUNK_OVERLAP"
+        ),
+    )
+    rag_top_k: int = Field(
+        default=4,
+        ge=1,
+        validation_alias=AliasChoices("RAG_TOP_K", "NEXTROLE_RAG_TOP_K"),
+    )
+    enrichment_timeout_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        validation_alias=AliasChoices(
+            "ENRICHMENT_TIMEOUT_SECONDS", "NEXTROLE_ENRICHMENT_TIMEOUT_SECONDS"
+        ),
+    )
+    enrichment_max_pages: int = Field(
+        default=50,
+        ge=1,
+        validation_alias=AliasChoices(
+            "ENRICHMENT_MAX_PAGES", "NEXTROLE_ENRICHMENT_MAX_PAGES"
+        ),
+    )
+    enrichment_concurrency: int = Field(
+        default=4,
+        ge=1,
+        validation_alias=AliasChoices(
+            "ENRICHMENT_CONCURRENCY", "NEXTROLE_ENRICHMENT_CONCURRENCY"
+        ),
+    )
+    enrichment_max_bytes: int = Field(
+        default=2_000_000,
+        ge=1_000,
+        validation_alias=AliasChoices(
+            "ENRICHMENT_MAX_BYTES", "NEXTROLE_ENRICHMENT_MAX_BYTES"
+        ),
     )
 
 

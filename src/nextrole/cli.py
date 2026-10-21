@@ -6,6 +6,13 @@ from pathlib import Path
 
 from .config import get_settings
 from .discovery import DiscoveryRequest, SearchError, discover, planned_attempts
+from .enrichment import HttpxPageFetcher, enrich_jobs, load_job_input, write_jobs_json
+from .matching import (
+    MatchingError,
+    create_live_models,
+    load_jobs_json,
+    match_jobs,
+)
 from .profile import ProfileError, generate_queries, load_profile
 
 
@@ -53,6 +60,61 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument(
         "--dry-run", action="store_true", help="Print the plan without making a call."
     )
+    match_parser = subparsers.add_parser(
+        "match", help="Match normalized jobs against a candidate profile."
+    )
+    match_parser.add_argument(
+        "--profile", required=True, help="Path to profile Markdown."
+    )
+    match_parser.add_argument(
+        "--input", required=True, help="Path to normalized jobs JSON."
+    )
+    match_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Maximum jobs to evaluate (default: configured limit).",
+    )
+    match_parser.add_argument(
+        "--json", action="store_true", help="Print the matching report as JSON."
+    )
+    match_parser.add_argument(
+        "--output",
+        help="Write the matching report as formatted JSON to this path.",
+    )
+    match_parser.add_argument(
+        "--debug-evidence",
+        action="store_true",
+        help="Include retrieved chunks and requirement assessments in output.",
+    )
+    match_mode = match_parser.add_mutually_exclusive_group()
+    match_mode.add_argument(
+        "--live", action="store_true", help="Allow paid provider calls."
+    )
+    match_mode.add_argument(
+        "--dry-run", action="store_true", help="Show the plan only."
+    )
+    enrich_parser = subparsers.add_parser(
+        "enrich", help="Fetch and locally extract job pages (no AI calls)."
+    )
+    enrich_parser.add_argument("--input", required=True, help="Input jobs JSON.")
+    enrich_parser.add_argument("--output", required=True, help="Output enriched JSON.")
+    enrich_parser.add_argument(
+        "--timeout", type=float, help="Per-page timeout in seconds."
+    )
+    enrich_parser.add_argument(
+        "--max-pages", type=int, help="Maximum unique pages to fetch."
+    )
+    enrich_parser.add_argument(
+        "--concurrency", type=int, help="Maximum concurrent fetches."
+    )
+    enrich_parser.add_argument(
+        "--max-bytes", type=int, help="Maximum HTML response size."
+    )
+    enrich_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Write statuses without network requests.",
+    )
     return parser
 
 
@@ -79,7 +141,8 @@ def _run_check() -> int:
 def _run_discover(args: argparse.Namespace) -> int:
     settings = get_settings()
     try:
-        profile = load_profile(Path(args.profile)) if args.profile else None
+        profile_path = Path(args.profile) if args.profile else settings.profile_path
+        profile = load_profile(profile_path) if profile_path else None
         if args.query:
             queries = tuple(args.query)
             query_source = "manual"
@@ -156,6 +219,156 @@ def _run_profile_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_match(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    try:
+        profile = load_profile(Path(args.profile))
+        jobs = load_jobs_json(Path(args.input))
+        limit = args.limit if args.limit is not None else settings.match_max_jobs
+        if limit < 1:
+            raise MatchingError("--limit must be at least 1.")
+        planned = min(
+            sum(
+                job.validity_status != "invalid"
+                and bool(
+                    (job.description or "").strip()
+                    or any(item.strip() for item in job.requirements)
+                )
+                and bool(profile.career_history.strip())
+                for job in jobs
+            ),
+            limit,
+        )
+        if args.dry_run:
+            print("Mode: dry-run (no provider calls)")
+            print(f"Jobs received: {len(jobs)}")
+            print(f"Jobs planned: {planned}")
+            print(
+                "LLM provider/model: "
+                f"{settings.llm_provider or 'not configured'} / "
+                f"{settings.llm_model or 'not configured'}"
+            )
+            print(
+                "Embedding provider/model: "
+                f"{settings.embedding_provider or 'not configured'} / "
+                f"{settings.embedding_model or 'not configured'}"
+            )
+            print(f"Planned LLM calls: {planned}")
+            print(f"Planned embedding index build: {1 if planned else 0}")
+            return 0
+        if args.limit is not None:
+            settings = settings.model_copy(update={"match_max_jobs": limit})
+        if args.live:
+            chat_model, embeddings = create_live_models(settings)
+            report = match_jobs(
+                profile,
+                jobs,
+                settings,
+                live=True,
+                chat_model=chat_model,
+                embeddings=embeddings,
+                debug_evidence=args.debug_evidence,
+            )
+        else:
+            report = match_jobs(
+                profile,
+                jobs,
+                settings,
+                live=False,
+                debug_evidence=args.debug_evidence,
+            )
+    except (MatchingError, ProfileError, ValueError) as error:
+        print(f"Error: {error}")
+        return 2
+    if args.json or args.output:
+        payload = report.model_dump_json(indent=2) + "\n"
+        if args.output:
+            output_path = Path(args.output)
+            temporary_path = output_path.with_name(f".{output_path.name}.tmp")
+            try:
+                temporary_path.write_text(payload, encoding="utf-8")
+                temporary_path.replace(output_path)
+            except OSError as error:
+                print(f"Error: could not write matching report: {error}")
+                return 2
+            print(f"Wrote matching report to {output_path}")
+        else:
+            print(payload, end="")
+        return 0
+    print(f"Mode: {report.mode}")
+    print(f"Jobs received: {report.jobs_received}")
+    print(f"Jobs evaluated: {report.jobs_evaluated}")
+    print(f"Duplicates removed: {report.duplicates_removed}")
+    print(f"LLM calls attempted: {report.llm_calls_attempted}")
+    print(f"Embedding documents: {report.embedding_documents}")
+    print(f"Jobs skipped: {len(report.skipped_jobs)}")
+    for skipped in report.skipped_jobs:
+        print(f"- Skipped {skipped['title']}: {skipped['reason']}")
+    for evaluation in report.evaluations:
+        print(
+            f"- [{evaluation.eligibility}] {evaluation.job.title} "
+            f"(demonstrated fit: {evaluation.demonstrated_fit}/100; "
+            f"evidence coverage: {evaluation.evidence_coverage}/100)"
+        )
+        print(f"  URL: {evaluation.job.url or 'unknown'}")
+        print(f"  Reason: {evaluation.reason}")
+        if evaluation.matching_strengths:
+            print(f"  Strengths: {', '.join(evaluation.matching_strengths)}")
+        if evaluation.gaps:
+            print(f"  Gaps: {', '.join(evaluation.gaps)}")
+        if evaluation.uncertainties:
+            print(f"  Uncertainties: {', '.join(evaluation.uncertainties)}")
+    if args.debug_evidence and report.evidence_debug is not None:
+        print("Evidence debug:")
+        print(report.model_dump_json(include={"evidence_debug"}, indent=2))
+    return 0
+
+
+def _run_enrich(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    try:
+        jobs = load_job_input(Path(args.input))
+        max_pages = args.max_pages or settings.enrichment_max_pages
+        concurrency = args.concurrency or settings.enrichment_concurrency
+        if max_pages < 1 or concurrency < 1:
+            raise ValueError("--max-pages and --concurrency must be at least 1")
+        if args.dry_run:
+            enriched = enrich_jobs(jobs, max_pages=max_pages, dry_run=True)
+        else:
+            with HttpxPageFetcher(
+                timeout=args.timeout or settings.enrichment_timeout_seconds,
+                max_bytes=args.max_bytes or settings.enrichment_max_bytes,
+            ) as fetcher:
+                enriched = enrich_jobs(
+                    jobs,
+                    fetcher=fetcher,
+                    max_pages=max_pages,
+                    concurrency=concurrency,
+                )
+        write_jobs_json(Path(args.output), enriched)
+    except (OSError, ValueError) as error:
+        print(f"Error: {error}")
+        return 2
+    counts = {
+        "fetched": sum(
+            job.extraction_status not in {None, "skipped"} for job in enriched
+        ),
+        "successfully enriched": sum(
+            job.extraction_status == "success" for job in enriched
+        ),
+        "invalid": sum(job.validity_status == "invalid" for job in enriched),
+        "uncertain": sum(job.validity_status == "uncertain" for job in enriched),
+        "failed": sum(
+            job.extraction_status in {"failed", "blocked"} for job in enriched
+        ),
+    }
+    print(f"Wrote {len(enriched)} jobs to {args.output}")
+    print("; ".join(f"{key}: {value}" for key, value in counts.items()))
+    if args.dry_run:
+        print("Mode: dry-run (no network requests)")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "check":
@@ -164,6 +377,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_discover(args)
     if args.command == "profile" and args.profile_command == "validate":
         return _run_profile_validate(args)
+    if args.command == "match":
+        return _run_match(args)
+    if args.command == "enrich":
+        return _run_enrich(args)
     build_parser().print_help()
     return 0
 

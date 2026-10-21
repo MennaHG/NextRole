@@ -81,3 +81,30 @@ BSc in Computer Science.
     assert "Query source: manual" in output
     assert "custom query" in output
     assert "Backend Engineer Cairo jobs" not in output
+
+
+def test_configured_profile_path_is_used_for_discovery(tmp_path, monkeypatch, capsys):
+    profile = tmp_path / "profile.md"
+    profile.write_text(
+        """## Preferences
+- Roles: Data Engineer
+- Locations: Alexandria
+
+## Career history
+Built fictional data services.
+
+## Technical skills
+Python, SQL
+
+## Education
+BSc in Computer Science.
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NEXTROLE_PROFILE_PATH", str(profile))
+
+    assert main(["discover", "--dry-run"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Query source: profile" in output
+    assert "Data Engineer Alexandria jobs" in output
