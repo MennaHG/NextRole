@@ -4,7 +4,7 @@ An open-source Python project for discovering and evaluating recent job
 postings against a candidate's preferences and career history. It is also a
 small learning project for LangChain, embeddings, vector databases, and RAG.
 
-## Current status: Phase 4.1 — job-description enrichment and profile-based RAG matching
+## Current status: Phase 5 — job-description enrichment, RAG matching, and email digest
 
 Implemented:
 
@@ -24,9 +24,9 @@ Implemented:
 - Unit tests, Ruff configuration, and GitHub Actions CI.
 - A fictional example profile and repository hygiene rules.
 
-Planned for later phases: private Google Drive profiles, email digests, and
-scheduled GitHub Actions runs. Google Drive, delivery, scheduling, automatic
-applications, and the Perplexity Agent API are intentionally out of scope.
+Planned for later phases: private Google Drive profiles and scheduled GitHub
+Actions runs. Google Drive, scheduling, automatic applications, and the
+Perplexity Agent API are intentionally out of scope.
 
 ## Installation
 
@@ -63,6 +63,8 @@ nextrole match --profile ./private/profile.md --input ./enriched_jobs.json \
   --json --debug-evidence
 nextrole match --profile ./private/profile.md --input ./enriched_jobs.json \
   --json --debug-evidence --output ./outputs/debug-evidence.json
+nextrole digest --input ./outputs/matching-report.json --preview
+nextrole digest --input ./outputs/matching-report.json --send
 ```
 
 The same commands work without installation through the module entry point:
@@ -231,6 +233,54 @@ Fixture output is deliberately `uncertain`: it exercises the pipeline without
 pretending to perform semantic matching. No LLM or embedding calls occur in
 tests, profile validation, or dry-run mode. Phase 4 produces structured JSON
 reports for the future delivery layer; it does not send email or apply to jobs.
+
+### Email job digest
+
+The digest command consumes a saved matching report and does not run matching or
+make additional LLM calls. It includes only jobs with `valid` enrichment status,
+an application URL, and a score at or above the configured minimum. Explicitly
+`ineligible` jobs are excluded. Existing ranking is preserved, and the default
+maximum digest size is 10 jobs.
+
+Preview without connecting to Gmail:
+
+```bash
+nextrole digest --input ./outputs/matching-report.json --preview \
+  --output ./outputs/job-digest.html
+```
+
+Send the same report after configuring Gmail:
+
+```bash
+nextrole digest --input ./outputs/matching-report.json --send
+```
+
+Configure `DIGEST_MIN_MATCH_SCORE`, `DIGEST_MAX_JOBS`, and
+`DIGEST_STATE_PATH` to change filtering and delivery-state storage. The state
+file records job identities only after Gmail accepts the SMTP submission, so
+repeated runs do not intentionally resend the same jobs. SMTP submission is
+not a guarantee of inbox delivery, and a process failure between submission
+and state persistence can still result in a duplicate on a later run.
+
+Gmail setup:
+
+1. Enable Google 2-Step Verification for the Gmail account in Google Account
+   security settings.
+2. Open **App passwords**, create a password for NextRole, and copy the
+   generated 16-character value. App passwords may be unavailable for some
+   managed or protected accounts.
+3. Set the address and app password in a local `.env` file, or in the process
+   environment:
+
+```ini
+GMAIL_ADDRESS=yourname@gmail.com
+GMAIL_APP_PASSWORD=your_google_app_password
+```
+
+The address is used for both sender and recipient. The app password is never
+printed or included in the delivery state. For a future GitHub Actions
+workflow, store these values as repository or environment secrets named
+`GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD`; do not commit them to the repository.
 
 ### Evidence-grounded evaluation
 

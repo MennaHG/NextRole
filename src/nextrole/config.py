@@ -128,6 +128,35 @@ class Settings(BaseSettings):
             "ENRICHMENT_MAX_BYTES", "NEXTROLE_ENRICHMENT_MAX_BYTES"
         ),
     )
+    gmail_address: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GMAIL_ADDRESS", "NEXTROLE_GMAIL_ADDRESS"),
+    )
+    gmail_app_password: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "GMAIL_APP_PASSWORD", "NEXTROLE_GMAIL_APP_PASSWORD"
+        ),
+    )
+    digest_min_match_score: float = Field(
+        default=0,
+        ge=0,
+        le=100,
+        validation_alias=AliasChoices(
+            "DIGEST_MIN_MATCH_SCORE", "NEXTROLE_DIGEST_MIN_MATCH_SCORE"
+        ),
+    )
+    digest_max_jobs: int = Field(
+        default=10,
+        ge=1,
+        validation_alias=AliasChoices("DIGEST_MAX_JOBS", "NEXTROLE_DIGEST_MAX_JOBS"),
+    )
+    digest_state_path: Path = Field(
+        default=Path("data/digest_state.json"),
+        validation_alias=AliasChoices(
+            "DIGEST_STATE_PATH", "NEXTROLE_DIGEST_STATE_PATH"
+        ),
+    )
 
 
 def get_settings() -> Settings:

@@ -23,5 +23,6 @@ private-profile*.md
 chroma_db/
 chroma_data/
 data/generated/
+data/digest_state.json
 outputs/generated/
 enriched_jobs.json

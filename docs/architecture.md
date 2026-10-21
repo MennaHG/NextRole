@@ -60,6 +60,13 @@ preferences, candidate career chunks, and job evidence are separate prompt
 sections. The optional `--debug-evidence` trace is disabled by default because
 it can expose private career-history chunks.
 
+The email delivery boundary is `src/nextrole/digest.py`. It consumes saved
+`MatchingReport` JSON, renders deterministic HTML and plain text, and submits
+multipart mail through `smtplib.SMTP_SSL` on Gmail port 465. It has no provider
+or matching dependency. A local atomic JSON state file records successfully
+submitted job identities after SMTP returns; a future durable store can replace
+that file for scheduled GitHub Actions runs. Preview mode never opens SMTP.
+
 ## Future boundaries
 
 - The discovery adapter isolates the Perplexity Search API and is bounded to a

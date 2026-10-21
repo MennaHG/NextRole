@@ -5,6 +5,15 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .config import get_settings
+from .digest import (
+    DigestError,
+    build_digest,
+    load_delivery_state,
+    load_matching_report,
+    mark_digest_sent,
+    save_delivery_state,
+    send_gmail,
+)
 from .discovery import DiscoveryRequest, SearchError, discover, planned_attempts
 from .enrichment import HttpxPageFetcher, enrich_jobs, load_job_input, write_jobs_json
 from .matching import (
@@ -115,6 +124,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write statuses without network requests.",
     )
+    digest_parser = subparsers.add_parser(
+        "digest", help="Preview or deliver a digest from matching results."
+    )
+    digest_parser.add_argument(
+        "--input", required=True, help="Matching report JSON from `nextrole match`."
+    )
+    digest_parser.add_argument(
+        "--preview", action="store_true", help="Render without connecting to Gmail."
+    )
+    digest_parser.add_argument(
+        "--send", action="store_true", help="Submit the digest through Gmail SMTP."
+    )
+    digest_parser.add_argument(
+        "--output", help="Optional path for the rendered HTML preview."
+    )
+    digest_parser.add_argument(
+        "--state", help="Path to the persistent sent-job state JSON."
+    )
+    digest_parser.add_argument("--min-score", type=float)
+    digest_parser.add_argument("--max-jobs", type=int)
     return parser
 
 
@@ -369,6 +398,51 @@ def _run_enrich(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_digest(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    try:
+        if args.preview and args.send:
+            raise DigestError("Choose either --preview or --send, not both.")
+        report = load_matching_report(Path(args.input))
+        state_path = Path(args.state) if args.state else settings.digest_state_path
+        state = load_delivery_state(state_path)
+        digest = build_digest(
+            report,
+            min_score=(
+                args.min_score
+                if args.min_score is not None
+                else settings.digest_min_match_score
+            ),
+            max_jobs=args.max_jobs or settings.digest_max_jobs,
+            sent_ids=set(state.sent),
+        )
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(digest.html, encoding="utf-8")
+            print(f"Wrote HTML preview to {output_path}")
+        if not digest.evaluations:
+            print("No new qualifying jobs; no email sent.")
+            return 0
+        if not args.send:
+            print("Mode: preview (no Gmail connection)")
+            print(f"Subject: {digest.subject}")
+            print(digest.text, end="")
+            return 0
+        password = (
+            settings.gmail_app_password.get_secret_value()
+            if settings.gmail_app_password
+            else None
+        )
+        send_gmail(digest, address=settings.gmail_address, app_password=password)
+        save_delivery_state(state_path, mark_digest_sent(state, digest.identities))
+        print(f"Submitted digest with {len(digest.evaluations)} job(s) to Gmail.")
+        return 0
+    except (DigestError, OSError, ValueError) as error:
+        print(f"Error: {error}")
+        return 2
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "check":
@@ -381,6 +455,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_match(args)
     if args.command == "enrich":
         return _run_enrich(args)
+    if args.command == "digest":
+        return _run_digest(args)
     build_parser().print_help()
     return 0
 
