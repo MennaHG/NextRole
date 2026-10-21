@@ -50,10 +50,52 @@ class CandidateProfile(BaseModel):
     """Candidate preferences and career-history content."""
 
     name: str | None = None
+    contact: dict[str, str] = Field(default_factory=dict)
     preferences: JobPreferences
     career_history: str
     technical_skills: list[str] = Field(default_factory=list)
     education: str | None = None
+
+
+class CVContact(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    linkedin: str | None = None
+    github: str | None = None
+
+
+class CVBullet(BaseModel):
+    text: str
+    evidence_references: list[str] = Field(default_factory=list)
+
+
+class CVExperience(BaseModel):
+    company: str
+    job_title: str
+    location: str | None = None
+    employment_dates: str | None = None
+    bullets: list[CVBullet] = Field(default_factory=list)
+
+
+class CVProject(BaseModel):
+    name: str
+    description: str
+    technologies: list[str] = Field(default_factory=list)
+    evidence_references: list[str] = Field(default_factory=list)
+
+
+class GeneratedCV(BaseModel):
+    """Rendering-independent, evidence-traceable tailored CV."""
+
+    headline: str
+    summary: str | None = None
+    contact: CVContact
+    experience: list[CVExperience] = Field(default_factory=list)
+    technical_skills: dict[str, list[str]] = Field(default_factory=dict)
+    projects: list[CVProject] = Field(default_factory=list)
+    education: str
+    validation_warnings: list[str] = Field(default_factory=list)
 
 
 class JobMatch(BaseModel):

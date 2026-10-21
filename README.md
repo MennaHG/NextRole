@@ -4,7 +4,7 @@ An open-source Python project for discovering and evaluating recent job
 postings against a candidate's preferences and career history. It is also a
 small learning project for LangChain, embeddings, vector databases, and RAG.
 
-## Current status: Phase 5 — job-description enrichment, RAG matching, and email digest
+## Current status: Phase 6 — job-description enrichment, RAG matching, email digest, and CV generation
 
 Implemented:
 
@@ -21,6 +21,10 @@ Implemented:
   chat-model call.
 - A bounded, robots-aware job-page enrichment command using `httpx`,
   Schema.org `JobPosting` JSON-LD first, and BeautifulSoup HTML fallback.
+- An on-demand CV generation command that extracts one job URL, makes one
+  structured LangChain call, and writes evidence-grounded CV JSON.
+- Deterministic profile metadata preservation for contact details, employment
+  metadata, and education, with validation warnings for unsupported claims.
 - Unit tests, Ruff configuration, and GitHub Actions CI.
 - A fictional example profile and repository hygiene rules.
 
@@ -132,6 +136,19 @@ commands do not call an LLM, send email, or require paid credentials.
    intentionally sent again on later runs. See [Email job digest](#email-job-digest)
    for Gmail setup details and delivery limitations.
 
+8. Generate a tailored CV from any accessible job posting URL. This requires
+   the configured LLM provider and model:
+
+   ```bash
+   nextrole generate-cv \
+     --url "https://company.com/jobs/backend-engineer" \
+     --profile ./private/profile.md
+   ```
+
+   The generated JSON is saved under `outputs/cvs/`, with a company-and-title
+   directory name. Contact information, employment metadata, and education are
+   loaded from the profile; the LLM supplies tailored wording and selection.
+
 ## CLI
 
 ```bash
@@ -154,6 +171,8 @@ nextrole match --profile ./private/profile.md --input ./enriched_jobs.json \
   --json --debug-evidence --output ./outputs/debug-evidence.json
 nextrole digest --input ./outputs/matching-report.json --preview
 nextrole digest --input ./outputs/matching-report.json --send
+nextrole generate-cv --url "https://company.com/jobs/backend-engineer" \
+  --profile ./private/profile.md
 ```
 
 The same commands work without installation through the module entry point:
@@ -386,6 +405,28 @@ chunks, extracted job requirements, assessments, eligibility, and score to the
 output; it is intentionally opt-in because retrieved chunks may contain
 private profile information. Add `--output path.json` to save the formatted
 report directly to a file.
+
+### Tailored CV generation
+
+Generate one structured CV JSON from a job URL and the existing Markdown profile:
+
+```bash
+nextrole generate-cv \
+  --url "https://company.com/jobs/backend-engineer" \
+  --profile ./private/profile.md
+```
+
+The command makes one structured LangChain model call after extracting the job
+page. Contact details and education are copied from the profile, while
+employment metadata is preserved from recognizable profile headings and dates.
+Each generated experience bullet carries its own evidence references. Skills,
+projects, metrics, and claim terms are checked against profile evidence;
+validation warnings are included in the JSON and printed in the CLI summary.
+An empty generated skills section fails validation. Generated files are saved
+under `outputs/cvs/`; the profile is never modified.
+
+CV generation currently produces structured JSON only. Google Docs, PDF, and
+LaTeX rendering are not yet implemented.
 
 ## Development
 

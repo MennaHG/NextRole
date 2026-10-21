@@ -15,6 +15,10 @@ class ProfileError(ValueError):
 
 
 _SECTION_NAMES = {
+    "contact": "contact",
+    "contact info": "contact",
+    "contact info & links": "contact",
+    "contact information": "contact",
     "preferences": "preferences",
     "career history": "career_history",
     "technical skills": "technical_skills",
@@ -39,7 +43,13 @@ def load_profile(path: Path) -> CandidateProfile:
 def parse_profile(markdown: str) -> CandidateProfile:
     """Parse the documented four-section Markdown profile format."""
     sections = _sections(markdown)
-    missing = [name for name in _SECTION_NAMES.values() if name not in sections]
+    required_sections = (
+        "preferences",
+        "career_history",
+        "technical_skills",
+        "education",
+    )
+    missing = [name for name in required_sections if name not in sections]
     if missing:
         labels = ", ".join(name.replace("_", " ") for name in missing)
         raise ProfileError(f"missing required section(s): {labels}")
@@ -74,6 +84,8 @@ def parse_profile(markdown: str) -> CandidateProfile:
         raise ProfileError("education must not be empty")
 
     return CandidateProfile(
+        name=_preference_values(sections.get("contact", "")).get("name"),
+        contact=_preference_values(sections.get("contact", "")),
         preferences=preferences,
         career_history=career_history,
         technical_skills=technical_skills,
@@ -138,7 +150,7 @@ def _preference_values(section: str) -> dict[str, str]:
     for line in section.splitlines():
         match = re.match(r"^\s*[-*]\s*([^:]+):\s*(.*?)\s*$", line)
         if match:
-            values[match.group(1).casefold()] = match.group(2)
+            values[match.group(1).strip().casefold()] = match.group(2).strip()
     return values
 
 

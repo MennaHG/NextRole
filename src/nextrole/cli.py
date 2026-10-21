@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .config import get_settings
+from .cv_generation import CVGenerationError, generate_cv_from_profile, save_cv
 from .digest import (
     DigestError,
     build_digest,
@@ -144,6 +145,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     digest_parser.add_argument("--min-score", type=float)
     digest_parser.add_argument("--max-jobs", type=int)
+    cv_parser = subparsers.add_parser(
+        "generate-cv", help="Generate an evidence-grounded tailored CV from a job URL."
+    )
+    cv_parser.add_argument("--url", required=True, help="Job posting URL.")
+    cv_parser.add_argument("--profile", help="Candidate profile Markdown path.")
+    cv_parser.add_argument(
+        "--output-root", default="outputs/cvs", help="Directory for generated CV JSON."
+    )
     return parser
 
 
@@ -443,6 +452,31 @@ def _run_digest(args: argparse.Namespace) -> int:
         return 2
 
 
+def _run_generate_cv(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    profile_path = Path(args.profile) if args.profile else settings.profile_path
+    if profile_path is None:
+        print("Error: provide --profile or configure NEXTROLE_PROFILE_PATH")
+        return 2
+    try:
+        cv, job = generate_cv_from_profile(args.url, profile_path, settings=settings)
+        path = save_cv(cv, job, Path(args.output_root))
+    except (CVGenerationError, OSError, ValueError) as error:
+        print(f"Error: {error}")
+        return 2
+    print(f"Company and job title: {job.company or 'unknown'} — {job.title}")
+    print(f"Output file: {path}")
+    bullet_count = sum(len(item.bullets) for item in cv.experience)
+    print(f"Selected experience bullets: {bullet_count}")
+    if cv.validation_warnings:
+        print("Validation warnings:")
+        for warning in cv.validation_warnings:
+            print(f"- {warning}")
+    else:
+        print("Validation warnings: none")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "check":
@@ -457,6 +491,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_enrich(args)
     if args.command == "digest":
         return _run_digest(args)
+    if args.command == "generate-cv":
+        return _run_generate_cv(args)
     build_parser().print_help()
     return 0
 
